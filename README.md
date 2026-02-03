@@ -53,7 +53,9 @@ tomo examples/sockets_udp_sendrecv.tm
 
 ```sh
 tomo test/sockets_test.tm
+
 ```
+Note: the test uses `tomo-pthreads`.
 
 ## Error handling
 Most APIs return result enums (e.g., `SocketResult`, `SocketRecv`). Use pattern
