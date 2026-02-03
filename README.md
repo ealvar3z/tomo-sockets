@@ -62,7 +62,7 @@ Most APIs return result enums (e.g., `SocketResult`, `SocketRecv`). Use pattern
 matching or `socket_*_or_fail` helpers when a failure should abort.
 
 ## Platform notes
-- POSIX sockets are implemented; Windows stubs are present but not wired yet.
+- POSIX sockets are implemented; **Windows stubs are present but not wired yet**.
 - Timeouts are implemented with `poll` on POSIX.
 
 ## C API (shim)
