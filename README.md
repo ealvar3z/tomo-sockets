@@ -52,7 +52,7 @@ tomo examples/sockets_udp_sendrecv.tm
 ## Testing
 
 ```sh
-tomo test/sockets.tm
+tomo test/sockets_test.tm
 ```
 
 ## Error handling
