@@ -12,12 +12,15 @@ int ts_sock_init(int *out_err) {
     return TS_OK;
 }
 
-void ts_sock_shutdown(void) { WSACleanup(); }
+void ts_sock_shutdown(void) {
+    WSACleanup();
+}
 #else
 int ts_sock_init(int *out_err) {
     (void)out_err;
     return TS_OK;
 }
 
-void ts_sock_shutdown(void) {}
+void ts_sock_shutdown(void) {
+}
 #endif

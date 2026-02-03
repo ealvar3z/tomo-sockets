@@ -8,7 +8,8 @@
 #include <string.h>
 #include <unistd.h>
 
-static void ts_sock_init_struct(struct ts_sock *s, int family, int type, int protocol) {
+static void ts_sock_init_struct(struct ts_sock *s, int family, int type,
+                                int protocol) {
     s->fd = TS_INVALID_FD;
     s->family = family;
     s->type = type;
@@ -67,12 +68,14 @@ int ts_sock_close(struct ts_sock *s, int *out_err) {
     return TS_OK;
 }
 
-int ts_sock_connect(struct ts_sock *s, const struct ts_addr *addr, int timeout_ms, int *out_err) {
+int ts_sock_connect(struct ts_sock *s, const struct ts_addr *addr,
+                    int timeout_ms, int *out_err) {
     int flags;
     int ret;
 
     if (timeout_ms <= 0) {
-        if (connect(s->fd, (const struct sockaddr *)&addr->ss, addr->len) != 0) {
+        if (connect(s->fd, (const struct sockaddr *)&addr->ss, addr->len)
+            != 0) {
             ts_set_err(out_err, errno);
             return TS_ERR;
         }
@@ -143,8 +146,8 @@ int ts_sock_listen(struct ts_sock *s, int backlog, int *out_err) {
     return TS_OK;
 }
 
-int ts_sock_accept(struct ts_sock *s, struct ts_sock *out_client, struct ts_addr *out_peer, int timeout_ms,
-                   int *out_err) {
+int ts_sock_accept(struct ts_sock *s, struct ts_sock *out_client,
+                   struct ts_addr *out_peer, int timeout_ms, int *out_err) {
     socklen_t len = sizeof(out_peer->ss);
     int fd;
 
@@ -168,7 +171,8 @@ int ts_sock_accept(struct ts_sock *s, struct ts_sock *out_client, struct ts_addr
     return TS_OK;
 }
 
-int ts_sock_getsockname(struct ts_sock *s, struct ts_addr *out_addr, int *out_err) {
+int ts_sock_getsockname(struct ts_sock *s, struct ts_addr *out_addr,
+                        int *out_err) {
     socklen_t len = sizeof(out_addr->ss);
 
     if (getsockname(s->fd, (struct sockaddr *)&out_addr->ss, &len) != 0) {
@@ -181,7 +185,8 @@ int ts_sock_getsockname(struct ts_sock *s, struct ts_addr *out_addr, int *out_er
     return TS_OK;
 }
 
-int ts_sock_send(struct ts_sock *s, const void *buf, size_t len, int timeout_ms, size_t *out_sent, int *out_err) {
+int ts_sock_send(struct ts_sock *s, const void *buf, size_t len, int timeout_ms,
+                 size_t *out_sent, int *out_err) {
     ssize_t n;
 
     if (timeout_ms > 0) {
@@ -199,7 +204,8 @@ int ts_sock_send(struct ts_sock *s, const void *buf, size_t len, int timeout_ms,
     return TS_OK;
 }
 
-int ts_sock_recv(struct ts_sock *s, void *buf, size_t len, int timeout_ms, size_t *out_got, int *out_err) {
+int ts_sock_recv(struct ts_sock *s, void *buf, size_t len, int timeout_ms,
+                 size_t *out_got, int *out_err) {
     ssize_t n;
 
     if (timeout_ms > 0) {
@@ -219,8 +225,9 @@ int ts_sock_recv(struct ts_sock *s, void *buf, size_t len, int timeout_ms, size_
     return TS_OK;
 }
 
-int ts_sock_sendto(struct ts_sock *s, const void *buf, size_t len, const struct ts_addr *addr, int timeout_ms,
-                   size_t *out_sent, int *out_err) {
+int ts_sock_sendto(struct ts_sock *s, const void *buf, size_t len,
+                   const struct ts_addr *addr, int timeout_ms, size_t *out_sent,
+                   int *out_err) {
     ssize_t n;
 
     if (timeout_ms > 0) {
@@ -228,7 +235,8 @@ int ts_sock_sendto(struct ts_sock *s, const void *buf, size_t len, const struct 
         if (ready != TS_OK) return ready;
     }
 
-    n = sendto(s->fd, buf, len, 0, (const struct sockaddr *)&addr->ss, addr->len);
+    n = sendto(s->fd, buf, len, 0, (const struct sockaddr *)&addr->ss,
+               addr->len);
     if (n < 0) {
         ts_set_err(out_err, errno);
         return TS_ERR;
@@ -238,8 +246,9 @@ int ts_sock_sendto(struct ts_sock *s, const void *buf, size_t len, const struct 
     return TS_OK;
 }
 
-int ts_sock_recvfrom(struct ts_sock *s, void *buf, size_t len, struct ts_addr *out_addr, int timeout_ms,
-                     size_t *out_got, int *out_err) {
+int ts_sock_recvfrom(struct ts_sock *s, void *buf, size_t len,
+                     struct ts_addr *out_addr, int timeout_ms, size_t *out_got,
+                     int *out_err) {
     socklen_t alen = sizeof(out_addr->ss);
     ssize_t n;
 
@@ -281,7 +290,8 @@ int ts_sock_set_nonblocking(struct ts_sock *s, int enable, int *out_err) {
     return TS_OK;
 }
 
-static int ts_sockopt_to_level_name(enum ts_sockopt opt, int *out_level, int *out_name) {
+static int ts_sockopt_to_level_name(enum ts_sockopt opt, int *out_level,
+                                    int *out_name) {
     switch (opt) {
     case TS_SOCKOPT_REUSEADDR:
         *out_level = SOL_SOCKET;
@@ -323,7 +333,8 @@ static int ts_sockopt_to_level_name(enum ts_sockopt opt, int *out_level, int *ou
     }
 }
 
-int ts_sock_set_sockopt(struct ts_sock *s, enum ts_sockopt opt, int value, int *out_err) {
+int ts_sock_set_sockopt(struct ts_sock *s, enum ts_sockopt opt, int value,
+                        int *out_err) {
     int level;
     int name;
     int val = value;
@@ -341,7 +352,8 @@ int ts_sock_set_sockopt(struct ts_sock *s, enum ts_sockopt opt, int value, int *
     return TS_OK;
 }
 
-int ts_sock_get_sockopt(struct ts_sock *s, enum ts_sockopt opt, int *out_value, int *out_err) {
+int ts_sock_get_sockopt(struct ts_sock *s, enum ts_sockopt opt, int *out_value,
+                        int *out_err) {
     int level;
     int name;
     int val = 0;
