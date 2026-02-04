@@ -1,4 +1,4 @@
-use sockets
+use ../sockets.tm
 
 host := "127.0.0.1"
 port := 8383
