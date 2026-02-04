@@ -3,11 +3,9 @@ use <gc.h>
 use <stdlib.h>
 use <string.h>
 
-use ./sockets.h
-use ./sockets.c
-use ./sockets_posix.c
-use ./sockets_addr.c
-use ./sockets_win.c
+use ./lib/sockets.h
+use ./lib/sockets_posix.c
+use ./lib/sockets_win.c
 
 enum SocketFamily(Inet, Inet6)
 
@@ -583,6 +581,8 @@ struct UdpSocket(_handle:@Memory)
             return SocketValue.Ok(Int(value))
         return SocketValue.Failure(_err_text(err))
 
+use ./buffer.tm
+
 func socket_or_fail(r:SocketResult, message:Text?=none)
     if not r.is_success()
         fail(message or "Socket error: $r")
@@ -612,12 +612,11 @@ func socket_addr_or_fail(r:SocketAddrResult, message:Text?=none -> SocketAddr)
         return addr
     else fail(message or "Socket address error: $r")
 
-enum SelectItem(Tcp(sock:TcpSocket), 
-                Udp(sock:UdpSocket))
+use ./io.tm
 
-enum SelectResult(Ready(read:[SelectItem], 
-                        write:[SelectItem]), 
-                        Timeout, Failure(reason:Text))
+enum SelectItem(Tcp(sock:TcpSocket), Udp(sock:UdpSocket))
+
+enum SelectResult(Ready(read:[SelectItem], write:[SelectItem]), Timeout, Failure(reason:Text))
 
 func tcp(sock:TcpSocket -> SelectItem)
     return SelectItem.Tcp(sock)
@@ -635,20 +634,6 @@ func select_udp(read:[UdpSocket]=[], write:[UdpSocket]=[], timeout_ms:Int=0 -> S
     write_items := [udp(sock) for sock in write]
     return select(read_items, write_items, timeout_ms=timeout_ms)
 
-func _zero_bytes(count:Int -> [Byte])
-    bytes : [Byte]
-    if count <= 0
-        return bytes
-    count_i64 := Int64(count)
-    C_code`
-        uint8_t *buf = GC_MALLOC((size_t)@count_i64);
-        memset(buf, 0, (size_t)@count_i64);
-        List$insert_all(&@bytes,
-            (List_t){.data = buf, .stride = 1, .length = (int64_t)@count_i64},
-            I(0), 1);
-    `
-    return bytes
-
 func select(read:[SelectItem]=[], write:[SelectItem]=[], timeout_ms:Int=0 -> SelectResult)
     read_handles : @[ @Memory ] = @[]
     write_handles : @[ @Memory ] = @[]
@@ -665,39 +650,20 @@ func select(read:[SelectItem]=[], write:[SelectItem]=[], timeout_ms:Int=0 -> Sel
         is Udp(sock)
             write_handles.insert(sock._handle)
 
-    read_len := read_handles[].length
-    write_len := write_handles[].length
-    read_ready := _zero_bytes(read_len)
-    write_ready := _zero_bytes(write_len)
-    err := Int32(0)
-    timeout_ms_i32 := Int32(timeout_ms)
-    read_count_i32 := Int32(read_len)
-    write_count_i32 := Int32(write_len)
-
-    read_handles_value := read_handles[]
-    write_handles_value := write_handles[]
-    rc := C_code:Int32`
-        List$compact(&@read_handles_value, sizeof(void *));
-        List$compact(&@write_handles_value, sizeof(void *));
-        ts_select((struct ts_sock **)@read_handles_value.data, @read_count_i32,
-            (struct ts_sock **)@write_handles_value.data, @write_count_i32,
-            @timeout_ms_i32, &@err,
-            (uint8_t *)@read_ready.data, (uint8_t *)@write_ready.data);
-    `
-
-    if rc == C_code:Int32`TS_TIMEOUT`
+    raw := select_raw(read_handles, write_handles, timeout_ms=timeout_ms)
+    if raw.rc == C_code:Int32`TS_TIMEOUT`
         return SelectResult.Timeout
-    if rc != C_code:Int32`TS_OK`
-        return SelectResult.Failure(_err_text(err))
+    if raw.rc != C_code:Int32`TS_OK`
+        return SelectResult.Failure(_err_text(raw.err))
 
     read_ready_items : @[SelectItem] = @[]
     for i,item in read
-        if (read_ready[i] or Byte(0)) != 0
+        if (raw.read_ready[i] or Byte(0)) != 0
             read_ready_items.insert(item)
 
     write_ready_items : @[SelectItem] = @[]
     for i,item in write
-        if (write_ready[i] or Byte(0)) != 0
+        if (raw.write_ready[i] or Byte(0)) != 0
             write_ready_items.insert(item)
 
     return SelectResult.Ready(read_ready_items[], write_ready_items[])
