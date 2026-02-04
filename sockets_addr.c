@@ -3,8 +3,8 @@
 #include <errno.h>
 #include <string.h>
 
-int ts_addr_resolve(const char *host, const char *service, int family,
-                    int socktype, struct ts_addr *out_addr, int *out_err) {
+int ts_addr_resolve(const char *host, const char *service, int family, int socktype, struct ts_addr *out_addr,
+                    int *out_err) {
     struct addrinfo hints;
     struct addrinfo *res = NULL;
     int err;
@@ -33,13 +33,12 @@ int ts_addr_resolve(const char *host, const char *service, int family,
     return TS_OK;
 }
 
-int ts_addr_to_string(const struct ts_addr *addr, char *host, size_t host_len,
-                      char *service, size_t service_len, int *out_err) {
+int ts_addr_to_string(const struct ts_addr *addr, char *host, size_t host_len, char *service, size_t service_len,
+                      int *out_err) {
     int err;
 
-    err = getnameinfo((const struct sockaddr *)&addr->ss, addr->len, host,
-                      (socklen_t)host_len, service, (socklen_t)service_len,
-                      NI_NUMERICHOST | NI_NUMERICSERV);
+    err = getnameinfo((const struct sockaddr *)&addr->ss, addr->len, host, (socklen_t)host_len, service,
+                      (socklen_t)service_len, NI_NUMERICHOST | NI_NUMERICSERV);
     if (err != 0) {
         ts_set_err(out_err, err);
         return TS_ERR;
@@ -48,6 +47,4 @@ int ts_addr_to_string(const struct ts_addr *addr, char *host, size_t host_len,
     return TS_OK;
 }
 
-const char *ts_addr_strerror(int err) {
-    return gai_strerror(err);
-}
+const char *ts_addr_strerror(int err) { return gai_strerror(err); }
