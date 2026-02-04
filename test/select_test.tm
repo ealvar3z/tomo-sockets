@@ -1,5 +1,5 @@
-use ../tomo-pthreads/pthreads.tm
-use ../tomo-sockets/sockets.tm
+use pthreads
+use ../sockets.tm
 
 func main()
     say("RUN select")
