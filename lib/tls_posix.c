@@ -10,9 +10,29 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef yes
+#pragma push_macro("yes")
+#undef yes
+#define TS_TLS_RESTORE_yes 1
+#endif
+#ifdef no
+#pragma push_macro("no")
+#undef no
+#define TS_TLS_RESTORE_no 1
+#endif
+
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
+
+#ifdef TS_TLS_RESTORE_yes
+#pragma pop_macro("yes")
+#undef TS_TLS_RESTORE_yes
+#endif
+#ifdef TS_TLS_RESTORE_no
+#pragma pop_macro("no")
+#undef TS_TLS_RESTORE_no
+#endif
 
 struct ts_tls {
     struct ts_sock *sock;

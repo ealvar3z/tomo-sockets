@@ -6,6 +6,11 @@ use <string.h>
 use ./lib/sockets.h
 use ./lib/sockets_posix.c
 use ./lib/sockets_win.c
+use ./lib/tls.h
+use ./lib/tls_posix.c
+use ./lib/tls_win.c
+use -lssl
+use -lcrypto
 
 enum SocketFamily(Inet, Inet6)
 
@@ -75,6 +80,32 @@ enum SocketAddrResult(Ok(addr:SocketAddr), Failure(reason:Text))
         when r is Ok return yes
         else return no
 
+enum TlsResult(Success, Timeout, Closed, Failure(reason:Text))
+    func is_timeout(r:TlsResult -> Bool)
+        when r is Timeout return yes
+        else return no
+
+    func is_closed(r:TlsResult -> Bool)
+        when r is Closed return yes
+        else return no
+
+    func is_success(r:TlsResult -> Bool)
+        when r is Success return yes
+        else return no
+
+enum TlsSocketResult(Ok(sock:TlsSocket), Timeout, Closed, Failure(reason:Text))
+    func is_timeout(r:TlsSocketResult -> Bool)
+        when r is Timeout return yes
+        else return no
+
+    func is_closed(r:TlsSocketResult -> Bool)
+        when r is Closed return yes
+        else return no
+
+    func is_success(r:TlsSocketResult -> Bool)
+        when r is Ok return yes
+        else return no
+
 enum SocketOption(
     ReuseAddr,
     ReusePort,
@@ -87,6 +118,7 @@ enum SocketOption(
 )
 
 _socket_initialized := no
+_tls_initialized := no
 
 func _ensure_init()
     if _socket_initialized
@@ -96,6 +128,15 @@ func _ensure_init()
     if status != C_code:Int32`TS_OK`
         fail("Socket init failed: $err")
     _socket_initialized = yes
+
+func _ensure_tls_init()
+    if _tls_initialized
+        return
+    err := Int32(0)
+    status := C_code:Int32`ts_tls_global_init(&@err)`
+    if status != C_code:Int32`TS_OK`
+        fail("TLS init failed: $err")
+    _tls_initialized = yes
 
 func _family_to_af(family:SocketFamily -> Int32)
     when family is Inet return C_code:Int32`AF_INET`
@@ -126,11 +167,48 @@ func _addr_err_text(err:Int32 -> Text)
         return "unknown error"
     return C_code:Text`Text$from_str(ts_addr_strerror(@err))`
 
+func _tls_err_text(err:Int32 -> Text)
+    if err == 0
+        return "unknown TLS error"
+    return C_code:Text`Text$from_str(ts_tls_strerror(@err))`
+
 func _result_from_rc(rc:Int32, err:Int32 -> SocketResult)
     if rc == C_code:Int32`TS_OK` return SocketResult.Success
     if rc == C_code:Int32`TS_TIMEOUT` return SocketResult.Timeout
     if rc == C_code:Int32`TS_CLOSED` return SocketResult.Closed
     return SocketResult.Failure(_err_text(err))
+
+func _tls_result_from_rc(rc:Int32, err:Int32 -> TlsResult)
+    if rc == C_code:Int32`TS_OK` return TlsResult.Success
+    if rc == C_code:Int32`TS_TIMEOUT` return TlsResult.Timeout
+    if rc == C_code:Int32`TS_CLOSED` return TlsResult.Closed
+    return TlsResult.Failure(_tls_err_text(err))
+
+func _tls_socket_result_from_rc(rc:Int32, err:Int32, handle:@Memory? , tcp:TcpSocket -> TlsSocketResult)
+    if rc == C_code:Int32`TS_OK`
+        return TlsSocketResult.Ok(TlsSocket(_tls=handle!, _tcp=tcp, _handshaked=no))
+    if rc == C_code:Int32`TS_TIMEOUT`
+        return TlsSocketResult.Timeout
+    if rc == C_code:Int32`TS_CLOSED`
+        return TlsSocketResult.Closed
+    return TlsSocketResult.Failure(_tls_err_text(err))
+
+func _path_text(path:Path? -> Text?)
+    if p := path
+        return "$p"
+    return none
+
+func _alpn_csv(protocols:[Text] -> Text)
+    return ",".join(protocols)
+
+struct TlsConfig(
+    server_name:Text?=none,
+    verify_peer:Bool=yes,
+    insecure_skip_verify:Bool=no,
+    ca_file:Path?=none,
+    ca_path:Path?=none,
+    alpn:[Text]=[]
+)
 
 struct SocketAddr(host:Text, port:Int, family:SocketFamily)
     func resolve(host:Text, port:Int, family=SocketFamily.Inet -> SocketAddrResult)
@@ -359,6 +437,124 @@ struct TcpSocket(_handle:@Memory)
         if rc == C_code:Int32`TS_OK`
             return SocketValue.Ok(Int(value))
         return SocketValue.Failure(_err_text(err))
+
+struct TlsSocket(_tls:@Memory, _tcp:TcpSocket, _handshaked:Bool=no)
+    func wrap_client(tcp:TcpSocket, config:TlsConfig=TlsConfig() -> TlsSocketResult)
+        _ensure_init()
+        _ensure_tls_init()
+
+        server_name := config.server_name or ""
+        ca_file_text := _path_text(config.ca_file) or ""
+        ca_path_text := _path_text(config.ca_path) or ""
+        alpn_csv := _alpn_csv(config.alpn)
+        verify_peer := Int32(0)
+        if config.verify_peer
+            verify_peer = Int32(1)
+        insecure_skip_verify := Int32(0)
+        if config.insecure_skip_verify
+            insecure_skip_verify = Int32(1)
+
+        err := Int32(0)
+        tls_handle : @Memory?
+        rc := C_code:Int32`
+            struct ts_tls_options opt;
+            struct ts_tls *tls = NULL;
+            memset(&opt, 0, sizeof(opt));
+            opt.server_name = @server_name.length > 0 ? Text$as_c_string(@server_name) : NULL;
+            opt.verify_peer = @verify_peer;
+            opt.insecure_skip_verify = @insecure_skip_verify;
+            opt.ca_file = @ca_file_text.length > 0 ? Text$as_c_string(@ca_file_text) : NULL;
+            opt.ca_path = @ca_path_text.length > 0 ? Text$as_c_string(@ca_path_text) : NULL;
+            opt.alpn_csv = @alpn_csv.length > 0 ? Text$as_c_string(@alpn_csv) : NULL;
+
+            int status = ts_tls_client_new(&tls, (struct ts_sock *)@(tcp._handle), &opt, &@err);
+            if (status == TS_OK)
+                @tls_handle = (void *)tls;
+            status;
+        `
+        return _tls_socket_result_from_rc(rc, err, tls_handle, tcp)
+
+    func handshake(sock:TlsSocket, timeout_ms:Int=0 -> TlsResult)
+        err := Int32(0)
+        timeout_ms_i32 := Int32(timeout_ms)
+        rc := C_code:Int32`
+            ts_tls_handshake((struct ts_tls *)@(sock._tls), @timeout_ms_i32, &@err);
+        `
+        return _tls_result_from_rc(rc, err)
+
+    func send(sock:TlsSocket, data:[Byte], timeout_ms:Int=0 -> TlsResult)
+        err := Int32(0)
+        timeout_ms_i32 := Int32(timeout_ms)
+        rc := C_code:Int32`
+            size_t sent = 0;
+            if (@data.stride != 1)
+                List$compact(&@data, 1);
+            ts_tls_send((struct ts_tls *)@(sock._tls), @data.data,
+                (size_t)@data.length, @timeout_ms_i32, &sent, &@err);
+        `
+        return _tls_result_from_rc(rc, err)
+
+    func receive(sock:TlsSocket, max_bytes:Int=8192, timeout_ms:Int=0 -> SocketRecv)
+        bytes : [Byte]
+        err := Int32(0)
+        max_bytes_i64 := Int64(max_bytes)
+        timeout_ms_i32 := Int32(timeout_ms)
+        rc := C_code:Int32`
+            uint8_t *buf = GC_MALLOC((size_t)@max_bytes_i64);
+            size_t got = 0;
+            int status = ts_tls_recv((struct ts_tls *)@(sock._tls), buf,
+                (size_t)@max_bytes_i64, @timeout_ms_i32, &got, &@err);
+            if (status == TS_OK) {
+                List$insert_all(&@bytes,
+                    (List_t){.data = buf, .stride = 1, .length = (int64_t)got},
+                    I(0), 1);
+            }
+            status;
+        `
+        if rc == C_code:Int32`TS_OK`
+            return SocketRecv.Ok(bytes)
+        if rc == C_code:Int32`TS_TIMEOUT`
+            return SocketRecv.Timeout
+        if rc == C_code:Int32`TS_CLOSED`
+            return SocketRecv.Closed
+        return SocketRecv.Failure(_tls_err_text(err))
+
+    func close(sock:TlsSocket -> TlsResult)
+        err := Int32(0)
+        rc := C_code:Int32`
+            int status = ts_tls_close((struct ts_tls *)@(sock._tls), &@err);
+            ts_tls_free((struct ts_tls *)@(sock._tls));
+            status;
+        `
+        return _tls_result_from_rc(rc, err)
+
+    func peer_cert_subject(sock:TlsSocket -> Text?)
+        text : Text
+        err := Int32(0)
+        rc := C_code:Int32`
+            char buf[1024];
+            int status = ts_tls_peer_cert_subject((struct ts_tls *)@(sock._tls), buf, sizeof(buf), &@err);
+            if (status == TS_OK)
+                @text = Text$from_str(buf);
+            status;
+        `
+        if rc == C_code:Int32`TS_OK`
+            return text
+        return none
+
+    func selected_alpn(sock:TlsSocket -> Text?)
+        text : Text
+        err := Int32(0)
+        rc := C_code:Int32`
+            char buf[256];
+            int status = ts_tls_selected_alpn((struct ts_tls *)@(sock._tls), buf, sizeof(buf), &@err);
+            if (status == TS_OK)
+                @text = Text$from_str(buf);
+            status;
+        `
+        if rc == C_code:Int32`TS_OK`
+            return text
+        return none
 
 struct UdpSocket(_handle:@Memory)
     func new(family=SocketFamily.Inet -> UdpSocket)
@@ -611,6 +807,15 @@ func socket_addr_or_fail(r:SocketAddrResult, message:Text?=none -> SocketAddr)
     when r is Ok(addr)
         return addr
     else fail(message or "Socket address error: $r")
+
+func tls_or_fail(r:TlsResult, message:Text?=none)
+    if not r.is_success()
+        fail(message or "TLS error: $r")
+
+func tls_socket_or_fail(r:TlsSocketResult, message:Text?=none -> TlsSocket)
+    when r is Ok(sock)
+        return sock
+    else fail(message or "TLS socket error: $r")
 
 use ./io.tm
 
