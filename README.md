@@ -27,6 +27,22 @@ In your Tomo file, import either:
 - `use sockets` (if installed as a Tomo library), or
 - `use ./sockets.tm` (from this repo path).
 
+Use via `modules.ini` (recommended):
+
+```ini
+[sockets]
+version=v1.0
+git=https://github.com/ealvar3z/tomo-sockets
+```
+
+Then in your program:
+
+```tomo
+use sockets
+```
+
+When `modules.ini` is present next to your source file, Tomo can resolve/install the module from git automatically.
+
 ## Quick Start (TCP)
 ```tomo
 use ./sockets.tm
