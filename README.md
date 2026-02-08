@@ -45,6 +45,7 @@ Import with `use sockets` (when installed) or `use ./tomo-sockets/sockets.tm`.
 ```sh
 tomo examples/sockets_tcp_echo.tm
 tomo examples/sockets_udp_sendrecv.tm
+tomo examples/irc_client.tm -- mynick --channel "#tomo"
 ```
 
 ## Testing
