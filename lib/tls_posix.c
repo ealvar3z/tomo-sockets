@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <gc.h>
 #include <poll.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -217,15 +218,16 @@ int ts_tls_client_new(struct ts_tls **out_tls, struct ts_sock *sock,
     rc = ts_tls_global_init(out_err);
     if (rc != TS_OK) return rc;
 
-    tls = calloc(1, sizeof(*tls));
+    tls = GC_MALLOC(sizeof(*tls));
     if (tls == NULL) {
         ts_set_err(out_err, ENOMEM);
         return TS_ERR;
     }
+    memset(tls, 0, sizeof(*tls));
     tls->sock = sock;
     tls->ctx = SSL_CTX_new(TLS_client_method());
     if (tls->ctx == NULL) {
-        free(tls);
+        tls->sock = NULL;
         return ts_tls_set_last_ssl_err(out_err);
     }
 
@@ -420,7 +422,10 @@ void ts_tls_free(struct ts_tls *tls) {
     if (tls == NULL) return;
     if (tls->ssl != NULL) SSL_free(tls->ssl);
     if (tls->ctx != NULL) SSL_CTX_free(tls->ctx);
-    free(tls);
+    tls->ssl = NULL;
+    tls->ctx = NULL;
+    tls->sock = NULL;
+    tls->closed = 1;
 }
 
 int ts_tls_peer_cert_subject(struct ts_tls *tls, char *out, size_t out_len,

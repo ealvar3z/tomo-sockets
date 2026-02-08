@@ -1,6 +1,4 @@
-use <stdlib.h>
-use <unistd.h>
-
+use shell
 use ../sockets.tm
 
 test_root := (/tmp/tomo-sockets-tls-test)
@@ -9,30 +7,28 @@ key_path := test_root ++ (./key.pem)
 pid_path := test_root ++ (./server.pid)
 port := 19443
 
-func run_or_fail(cmd:Text)
-    rc := C_code:Int32`system(Text$as_c_string(@cmd))`
-    fail("command failed ($rc): $cmd") unless rc == 0
+func run_or_fail(cmd:Shell)
+    cmd.run().or_fail("command failed")
 
-func run_no_fail(cmd:Text)
-    _ := C_code:Int32`system(Text$as_c_string(@cmd))`
+func run_no_fail(cmd:Shell)
+    _ := cmd.run()
 
 func sleep_ms(ms:Int)
-    ms_i64 := Int64(ms)
-    C_code`usleep((useconds_t)(@ms_i64 * 1000));`
+    run_no_fail($Shell"sleep $(Num(ms)/1000)")
 
 func setup_tls_materials()
-    run_or_fail("mkdir -p $test_root")
-    run_or_fail("openssl req -x509 -newkey rsa:2048 -nodes -keyout $key_path -out $cert_path -days 1 -subj '/CN=localhost' >/dev/null 2>&1")
+    run_or_fail($Shell"mkdir -p $test_root")
+    run_or_fail($Shell"openssl req -x509 -newkey rsa:2048 -nodes -keyout $key_path -out $cert_path -days 1 -subj '/CN=localhost' >/dev/null 2>&1")
 
 func start_tls_server()
-    run_or_fail("sh -c 'openssl s_server -quiet -accept $port -cert $cert_path -key $key_path -www > $test_root/server.log 2>&1 & sleep 0.1; pgrep -f \"openssl s_server -quiet -accept $port\" | head -n1 > $pid_path'")
+    run_or_fail($Shell"sh -c 'openssl s_server -quiet -accept $port -cert $cert_path -key $key_path -www > $test_root/server.log 2>&1 & sleep 0.1; pgrep -f \"openssl s_server -quiet -accept $port\" | head -n1 > $pid_path'")
     sleep_ms(300)
 
 func stop_tls_server()
     pid_text := (pid_path.read() or "").trim(" \n\t")
     if pid_text != ""
-        run_no_fail("kill $pid_text >/dev/null 2>&1 || true")
-    run_no_fail("rm -f $pid_path")
+        run_no_fail($Shell"kill $pid_text >/dev/null 2>&1 || true")
+    run_no_fail($Shell"rm -f $pid_path")
 
 func tls_connect(config:TlsConfig -> TlsSocket)
     sock := TcpSocket.new()

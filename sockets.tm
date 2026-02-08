@@ -521,7 +521,11 @@ struct TlsSocket(_tls:@Memory, _tcp:TcpSocket, _handshaked:Bool=no)
 
     func close(sock:TlsSocket -> TlsResult)
         err := Int32(0)
-        rc := C_code:Int32`ts_tls_close((struct ts_tls *)@(sock._tls), &@err)`
+        rc := C_code:Int32`
+            int status = ts_tls_close((struct ts_tls *)@(sock._tls), &@err);
+            ts_tls_free((struct ts_tls *)@(sock._tls));
+            status;
+        `
         return _tls_result_from_rc(rc, err)
 
     func peer_cert_subject(sock:TlsSocket -> Text?)
